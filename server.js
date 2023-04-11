@@ -1,11 +1,13 @@
-const grpc = require("grpc");
+const { v4: uuidv4 } = require('uuid');
+const grpc = require("@grpc/grpc-js");
 const protoLoader = require("@grpc/proto-loader");
 
 const PROTO_PATH = "chat.proto";
 const SERVER_URI = "0.0.0.0:9090";
 
-const usersInChat = [];
-const observers = [];
+let usersInChat = [];
+let observers = [];
+let chats = [];
 
 const packageDefinition = protoLoader.loadSync(PROTO_PATH);
 const protoDescriptor = grpc.loadPackageDefinition(packageDefinition);
@@ -27,12 +29,38 @@ const join = (call, callback) => {
   }
 };
 
+const outRoom = (call, callback) =>{
+  const user = call.request;
+  usersInChat = usersInChat.filter(e => e.name !== user.name)
+  observers = observers.filter(e=> e.user.name !== user.name)
+  console.log({observers, usersInChat})
+  callback(null, {});
+
+}
+
 const sendMsg = (call, callback) => {
-  const chatObj = call.request;
+  var chatObj = call.request;
+
+  console.log({
+    chats,
+    chatObj
+  })
+  let indexLast = chats.map(e=> e.from).lastIndexOf(chatObj.from)
+  let lastMessage = chats[indexLast]
+  if(!!lastMessage && lastMessage.likeList.length < 2 ){
+    return callback(null, {});
+  }
+
+  chatObj = {
+    ...chatObj,
+    uuid: uuidv4(),
+    likeList: []
+  }
+  // check du like moi cho send all
   observers.forEach((observer) => {
     observer.call.write(chatObj);
   });
-  // chats.push(chatObj);
+  chats.push(chatObj);
 
   callback(null, {});
 };
@@ -42,9 +70,45 @@ const getAllUsers = (call, callback) => {
 };
 
 const receiveMsg = (call, callback) => {
+  const user = call.request
   observers.push({
     call,
+    user: {
+      name: user.user
+    }
   });
+};
+
+const getAllMessages = (call, callback) => {
+  callback(null, { messages: chats });
+};
+
+const likeToMessage = (call, callback) => {
+  const {uuid, user} = call.request;
+  let msg = chats.find(e => e.uuid == uuid);
+
+  switch (true) {
+    case !msg:
+      callback(null, { error: 1, msg: "message not found"});
+      break;
+    case msg.likeList.map(e=>e.name).includes(user.name):
+      callback(null, { error: 1, msg: "you have liked message"});
+      break;
+    case  msg.from == user.name:
+      callback(null, { error: 1, msg: "Can't like your message"});
+      break;
+
+    default:
+      msg.likeList.push(user)
+      observers.forEach((observer) => {
+        observer.call.write(msg);
+      });
+      callback(null, {
+        error: 0,
+        msg: "Success like",
+      });
+      break;
+  }
 };
 
 const server = new grpc.Server();
@@ -54,9 +118,13 @@ server.addService(protoDescriptor.ChatService.service, {
   sendMsg,
   getAllUsers,
   receiveMsg,
+  getAllMessages,
+  likeToMessage,
+  outRoom
 });
 
-server.bind(SERVER_URI, grpc.ServerCredentials.createInsecure());
+server.bindAsync(SERVER_URI, grpc.ServerCredentials.createInsecure(), ()=>{
+  server.start();
+});
 
-server.start();
 console.log("Server is running!");
