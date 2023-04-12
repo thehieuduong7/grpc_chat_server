@@ -5,9 +5,13 @@ const protoLoader = require("@grpc/proto-loader");
 const PROTO_PATH = "chat.proto";
 const SERVER_URI = "0.0.0.0:9090";
 
-let usersInChat = [];
-let observers = [];
+let userInRoom = [];
+let callListUser = [];
 let chats = [];
+
+// setInterval(()=>{
+//   console.log({userInRoom: userInRoom.length, callListUser: callListUser.length,})
+// }, 5000)
 
 const packageDefinition = protoLoader.loadSync(PROTO_PATH);
 const protoDescriptor = grpc.loadPackageDefinition(packageDefinition);
@@ -17,34 +21,36 @@ const join = (call, callback) => {
   const user = call.request;
 
   // check username already exists.
-  const userExiist = usersInChat.find((_user) => _user.name == user.name);
+  const userExiist = userInRoom.find((e) => e.user.name == user.name);
   if (!userExiist) {
-    usersInChat.push(user);
+    userInRoom.push({user});
     callback(null, {
       error: 0,
       msg: "Success",
     });
+    notifcateUserList();
   } else {
     callback(null, { error: 1, msg: "user already exist." });
   }
 };
 
+const clearUser = (user)=>{
+  userIndex = userInRoom.findIndex(e => e.user.name === user.name)
+  if(userIndex != -1){
+    userInRoom[userIndex].callMessage.end();
+    userInRoom.splice(userIndex, 1)
+  }
+}
+
 const outRoom = (call, callback) =>{
   const user = call.request;
-  usersInChat = usersInChat.filter(e => e.name !== user.name)
-  observers = observers.filter(e=> e.user.name !== user.name)
-  console.log({observers, usersInChat})
+  clearUser(user);
   callback(null, {});
-
+  notifcateUserList();
 }
 
 const sendMsg = (call, callback) => {
   var chatObj = call.request;
-
-  console.log({
-    chats,
-    chatObj
-  })
   let indexLast = chats.map(e=> e.from).lastIndexOf(chatObj.from)
   let lastMessage = chats[indexLast]
   if(!!lastMessage && lastMessage.likeList.length < 2 ){
@@ -57,26 +63,35 @@ const sendMsg = (call, callback) => {
     likeList: []
   }
   // check du like moi cho send all
-  observers.forEach((observer) => {
-    observer.call.write(chatObj);
+  userInRoom.forEach((e) => {
+    e.callMessage.write(chatObj);
   });
   chats.push(chatObj);
 
   callback(null, {});
 };
 
+const notifcateUserList = ()=>{
+  callListUser.forEach(e=>{
+    e.write({users: userInRoom.map(e=> e.user)})
+  })
+}
 const getAllUsers = (call, callback) => {
-  callback(null, { users: usersInChat });
+  callListUser.push(call)
+  call.write({ users: userInRoom.map(e => e.user)})
+  call.on("cancelled", ()=>{
+    callListUser = callListUser.filter(e=> e !== call)
+  })
 };
 
 const receiveMsg = (call, callback) => {
   const user = call.request
-  observers.push({
-    call,
-    user: {
-      name: user.user
-    }
-  });
+  let indexUser = userInRoom.findIndex(e=> e.user.name === user.user)
+  userInRoom[indexUser].callMessage = call
+  call.on("cancelled", ()=>{
+    clearUser({name: user.user})
+    notifcateUserList();
+  })
 };
 
 const getAllMessages = (call, callback) => {
@@ -100,8 +115,8 @@ const likeToMessage = (call, callback) => {
 
     default:
       msg.likeList.push(user)
-      observers.forEach((observer) => {
-        observer.call.write(msg);
+      userInRoom.forEach((e) => {
+        e.callMessage.write(msg);
       });
       callback(null, {
         error: 0,

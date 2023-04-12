@@ -32,11 +32,16 @@ const client = new protoDescriptor.ChatService(
 //   })
 // })
 
-client.outRoom({
-  name: "a"
-}, (err, res)=>{
-  console.log({err, res})
-})
+var cs = client.getAllUsers({
+      });
+cs.on("data", (data) => {
+  console.log(data.users);
+});
+
+cs.on("status", (status) => {
+  console.log({status});
+});
+
 
 // client.join(
 //   {
