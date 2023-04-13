@@ -10,8 +10,17 @@ let callListUser = [];
 let chats = [];
 
 // setInterval(()=>{
-//   console.log({userInRoom: userInRoom.length, callListUser: callListUser.length,})
-// }, 5000)
+//   data = {
+//     chats: chats.map(e=>{
+//       return {
+//         uuid: e,
+//         from: e.from,
+//         like: e.likeList.length
+//         }
+//     }),
+//   }
+//   console.log({userInRoom: userInRoom.length, callListUser: callListUser.length})
+// }, 20000)
 
 const packageDefinition = protoLoader.loadSync(PROTO_PATH);
 const protoDescriptor = grpc.loadPackageDefinition(packageDefinition);
@@ -19,18 +28,17 @@ const protoDescriptor = grpc.loadPackageDefinition(packageDefinition);
 // we'll implement the handlers here
 const join = (call, callback) => {
   const user = call.request;
-
   // check username already exists.
   const userExiist = userInRoom.find((e) => e.user.name == user.name);
   if (!userExiist) {
     userInRoom.push({user});
     callback(null, {
-      error: 0,
+      code: 0,
       msg: "Success",
     });
-    notifcateUserList();
+
   } else {
-    callback(null, { error: 1, msg: "user already exist." });
+    callback(null, { code: 1, msg: "user already exist." });
   }
 };
 
@@ -38,8 +46,11 @@ const clearUser = (user)=>{
   userIndex = userInRoom.findIndex(e => e.user.name === user.name)
   if(userIndex != -1){
     userInRoom[userIndex].callMessage.end();
+    userInRoom[userIndex].notificate.end();
+
     userInRoom.splice(userIndex, 1)
   }
+  refreshMessage();
 }
 
 const outRoom = (call, callback) =>{
@@ -49,17 +60,20 @@ const outRoom = (call, callback) =>{
   notifcateUserList();
 }
 
+const isValidLastLike = (name)=>{
+  let indexLast = chats.map(e=> e.from).lastIndexOf(name)
+  let lastMessage = chats[indexLast]
+  return (!lastMessage || lastMessage.likeList.length >= 2 )
+}
+
 const sendMsg = (call, callback) => {
   var chatObj = call.request;
-  let indexLast = chats.map(e=> e.from).lastIndexOf(chatObj.from)
-  let lastMessage = chats[indexLast]
-  if(!!lastMessage && lastMessage.likeList.length < 2 ){
+  if(!isValidLastLike(chatObj.from) || userInRoom.length < 3 ){
     return callback(null, {});
   }
-
   chatObj = {
     ...chatObj,
-    uuid: uuidv4(),
+    uuid: chats.length+1,
     likeList: []
   }
   // check du like moi cho send all
@@ -77,23 +91,30 @@ const notifcateUserList = ()=>{
   })
 }
 const getAllUsers = (call, callback) => {
+  notifcateUserList();
   callListUser.push(call)
   call.write({ users: userInRoom.map(e => e.user)})
   call.on("cancelled", ()=>{
     callListUser = callListUser.filter(e=> e !== call)
+    call.end();
   })
 };
 
 const receiveMsg = (call, callback) => {
   const user = call.request
-  let indexUser = userInRoom.findIndex(e=> e.user.name === user.user)
+  let indexUser = userInRoom.findIndex(e=> e.user.name === user.name)
   userInRoom[indexUser].callMessage = call
   call.on("cancelled", ()=>{
-    clearUser({name: user.user})
+    clearUser({name: user.name})
     notifcateUserList();
   })
 };
 
+const refreshMessage = ()=>{
+  if(userInRoom.length<5){
+    chats = []
+  }
+}
 const getAllMessages = (call, callback) => {
   callback(null, { messages: chats });
 };
@@ -104,27 +125,49 @@ const likeToMessage = (call, callback) => {
 
   switch (true) {
     case !msg:
-      callback(null, { error: 1, msg: "message not found"});
+      callback(null, { code: 1, msg: "message not found"});
       break;
     case msg.likeList.map(e=>e.name).includes(user.name):
-      callback(null, { error: 1, msg: "you have liked message"});
+      callback(null, { code: 1, msg: "you have liked message"});
       break;
     case  msg.from == user.name:
-      callback(null, { error: 1, msg: "Can't like your message"});
+      callback(null, { code: 1, msg: "can't like your message"});
       break;
 
     default:
       msg.likeList.push(user)
-      userInRoom.forEach((e) => {
-        e.callMessage.write(msg);
-      });
+      if(isValidLastLike(msg.from)){
+        sendNotificate(msg.from, {
+          code: 0,
+          msg: "you can send message."
+        })
+      }
+      // userInRoom.forEach((e) => {
+      //   e.callMessage.write(msg);
+      // });
       callback(null, {
-        error: 0,
+        code: 0,
         msg: "Success like",
       });
       break;
   }
 };
+
+const sendNotificate = (name, data)=>{
+  callNotificate = userInRoom.find(e=> e.user.name === name)?.notificate
+  if(!callNotificate) return;
+  callNotificate.write(data)
+}
+
+const notificateUser = (call,callback) => {
+  const user = call.request
+  let indexUser = userInRoom.findIndex(e=> e.user.name === user.name)
+  userInRoom[indexUser].notificate = call
+  call.on("cancelled", ()=>{
+    clearUser({name: user.name})
+    notifcateUserList();
+  })
+}
 
 const server = new grpc.Server();
 
@@ -135,7 +178,8 @@ server.addService(protoDescriptor.ChatService.service, {
   receiveMsg,
   getAllMessages,
   likeToMessage,
-  outRoom
+  outRoom,
+  notificateUser
 });
 
 server.bindAsync(SERVER_URI, grpc.ServerCredentials.createInsecure(), ()=>{

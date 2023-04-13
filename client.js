@@ -1,6 +1,8 @@
 const grpc = require("@grpc/grpc-js");
 const protoLoader = require("@grpc/proto-loader");
 
+const { ChatService} = require('./client/chatservice')
+
 const PROTO_PATH = "chat.proto";
 const SERVER_URI = "0.0.0.0:9090";
 
@@ -12,84 +14,48 @@ const client = new protoDescriptor.ChatService(
   grpc.credentials.createInsecure()
 );
 
-// client.getAllUsers(null,(err, res) =>{
-//   // console.log({message: res.messages[0].likeList})
-//   // if(res.messages && res.messages.length != 0) {
-//   //   client.likeToMessage({
-//   //     uuid: res.messages[0].uuid,
-//   //     user: {
-//   //       username: "op221"
-//   //     }
-//   //   },(error, response) => {
-//   //     if(error) {
-//   //       console.log(error)
-//   //     }
-//   //     console.log({responseLike: response});
-//   //   })
-//   // }
-//   console.log({
-//     message: res.users
-//   })
-// })
+const readline = require('readline')
+const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+})
 
-var cs = client.getAllUsers({
-      });
-cs.on("data", (data) => {
-  console.log(data.users);
-});
-
-cs.on("status", (status) => {
-  console.log({status});
-});
+const chatservice = new ChatService(client, rl)
 
 
-// client.join(
-//   {
-//     username: "op2",
-//   },
-//   (err, res) => {
-//     console.log(err, res);
-//     var cs = client.receiveMsg({
-//       username: "op2",
-//     });
-//     cs.on("data", (data) => {
-//       console.log({data});
-//     });
-
-//     cs.on("status", (status) => {
-//       console.log({status});
-//     });
-
-//     // client.sendMsg(
-//     //   {
-//     //     from: "op2",
-//     //     msg: "hello op2",
-//     //   },
-//     //   (error, news) => {
-//     //     if (!error) console.log({error});
-//     //     console.log({news});
-//     //   }
-//     // );
-//   }
-// );
-
-
-
-
-/*
-cs.on("data", (data) => {
-  console.log(data);
-});
-
-client.sendMsg(
-  {
-    to: "op",
-    from: "op",
-    msg: "oppps",
-  },
-  (error, news) => {
-    if (!error) console.log(error);
-    console.log(news);
+function startChat (username){
+  try {
+    chatservice.joinRoom(username)
+    rl.on("line", function(text) {
+      if (!chatservice.isBegin){
+        return;
+      }
+      text=text.split(':')
+      switch (text[0]) {
+        case '1':
+          chatservice.sendMsg(text[1])
+          break;
+        case '2':
+          chatservice.likeMsg(text[1])
+          break;
+        case '0':
+          chatservice.outRoom()
+          break;
+        default:
+          break;
+      }
+   });
+  } catch (error) {
+    console.log({error})
+    process.exit(0)
   }
-);
-*/
+}
+
+  // Handle the SIGINT signal
+  process.on('SIGINT', () => {
+    chatservice.outRoom()
+  });
+
+rl.question("What's ur name? ", answer => {
+  startChat(answer);
+});
