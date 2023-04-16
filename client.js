@@ -1,7 +1,7 @@
 const grpc = require("@grpc/grpc-js");
 const protoLoader = require("@grpc/proto-loader");
 
-const { ChatService} = require('./client/chatservice')
+const { ChatService, printMessage} = require('./client/chatservice')
 
 const PROTO_PATH = "chat.proto";
 const SERVER_URI = "0.0.0.0:9090";
@@ -27,10 +27,10 @@ function startChat (username){
   try {
     chatservice.joinRoom(username)
     rl.on("line", function(text) {
-      if (!chatservice.isBegin){
+      text=text.split(':')
+      if (!chatservice.isBegin && text[0] != '0'){
         return;
       }
-      text=text.split(':')
       switch (text[0]) {
         case '1':
           chatservice.sendMsg(text[1])
@@ -46,7 +46,7 @@ function startChat (username){
       }
    });
   } catch (error) {
-    console.log({error})
+    printMessage("server", "server is down");
     process.exit(0)
   }
 }
@@ -59,3 +59,5 @@ function startChat (username){
 rl.question("What's ur name? ", answer => {
   startChat(answer);
 });
+
+

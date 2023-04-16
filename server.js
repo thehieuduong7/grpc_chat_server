@@ -1,29 +1,20 @@
 const { v4: uuidv4 } = require('uuid');
+const {printMessage} = require("./server/chatService")
+
 const grpc = require("@grpc/grpc-js");
 const protoLoader = require("@grpc/proto-loader");
-
 const PROTO_PATH = "chat.proto";
 const SERVER_URI = "0.0.0.0:9090";
+const packageDefinition = protoLoader.loadSync(PROTO_PATH);
+const protoDescriptor = grpc.loadPackageDefinition(packageDefinition);
+
+
+
 
 let userInRoom = [];
 let callListUser = [];
 let chats = [];
-
-// setInterval(()=>{
-//   data = {
-//     chats: chats.map(e=>{
-//       return {
-//         uuid: e,
-//         from: e.from,
-//         like: e.likeList.length
-//         }
-//     }),
-//   }
-//   console.log({userInRoom: userInRoom.length, callListUser: callListUser.length})
-// }, 20000)
-
-const packageDefinition = protoLoader.loadSync(PROTO_PATH);
-const protoDescriptor = grpc.loadPackageDefinition(packageDefinition);
+const MIN_USERS = 3
 
 // we'll implement the handlers here
 const join = (call, callback) => {
@@ -36,9 +27,15 @@ const join = (call, callback) => {
       code: 0,
       msg: "Success",
     });
-
+    printMessage("login",`${user.name} joined`)
+    notifcateUserList();
+    if(userInRoom.length==MIN_USERS){
+      printMessage("server",`start chat, (current ${userInRoom.length})`);
+    }
   } else {
-    callback(null, { code: 1, msg: "user already exist." });
+    let errorMessage = `${user.name} already exist.`;
+    printMessage("login error", errorMessage)
+    callback(null, { code: 1, msg: errorMessage});
   }
 };
 
@@ -47,8 +44,14 @@ const clearUser = (user)=>{
   if(userIndex != -1){
     userInRoom[userIndex].callMessage.end();
     userInRoom[userIndex].notificate.end();
+    userInRoom.splice(userIndex, 1);
 
-    userInRoom.splice(userIndex, 1)
+    //log user sign out
+
+    printMessage("logout",`${user.name} left`)
+    if(userInRoom.length == MIN_USERS-1){
+      printMessage("server",`waiting user, (current ${userInRoom.length})`);
+    }
   }
   refreshMessage();
 }
@@ -68,19 +71,22 @@ const isValidLastLike = (name)=>{
 
 const sendMsg = (call, callback) => {
   var chatObj = call.request;
-  if(!isValidLastLike(chatObj.from) || userInRoom.length < 3 ){
+
+  // check du like moi cho send all
+  if(!isValidLastLike(chatObj.from) || userInRoom.length < MIN_USERS ){
+    printMessage("message error", `${chatObj.msg} (from: ${chatObj.from})`)
     return callback(null, {});
   }
-  chatObj = {
+  let data= {
     ...chatObj,
     uuid: chats.length+1,
     likeList: []
   }
-  // check du like moi cho send all
   userInRoom.forEach((e) => {
-    e.callMessage.write(chatObj);
+    e.callMessage.write(data);
   });
-  chats.push(chatObj);
+  chats.push(data);
+  printMessage('message', `${data.msg} (from: ${data.from}, uuid: ${data.uuid})`)
 
   callback(null, {});
 };
@@ -91,7 +97,6 @@ const notifcateUserList = ()=>{
   })
 }
 const getAllUsers = (call, callback) => {
-  notifcateUserList();
   callListUser.push(call)
   call.write({ users: userInRoom.map(e => e.user)})
   call.on("cancelled", ()=>{
@@ -122,34 +127,39 @@ const getAllMessages = (call, callback) => {
 const likeToMessage = (call, callback) => {
   const {uuid, user} = call.request;
   let msg = chats.find(e => e.uuid == uuid);
-
+  let msgError = "";
   switch (true) {
     case !msg:
-      callback(null, { code: 1, msg: "message not found"});
+      msgError = "message not found"
       break;
     case msg.likeList.map(e=>e.name).includes(user.name):
-      callback(null, { code: 1, msg: "you have liked message"});
+      msgError = "have liked message"
       break;
     case  msg.from == user.name:
-      callback(null, { code: 1, msg: "can't like your message"});
+      msgError = "can't like your message"
+
       break;
 
     default:
       msg.likeList.push(user)
+
+      // notificate to user send msg
       if(isValidLastLike(msg.from)){
         sendNotificate(msg.from, {
           code: 0,
           msg: "you can send message."
         })
       }
-      // userInRoom.forEach((e) => {
-      //   e.callMessage.write(msg);
-      // });
       callback(null, {
         code: 0,
         msg: "Success like",
       });
+      printMessage("like", `${user.name} like ${uuid}`);
       break;
+  }
+  if(msgError != ""){
+    callback(null, { code: 1, msg: msgError});
+    printMessage("like error", `${user.name} like ${uuid} (${msgError})`);
   }
 };
 
@@ -186,4 +196,4 @@ server.bindAsync(SERVER_URI, grpc.ServerCredentials.createInsecure(), ()=>{
   server.start();
 });
 
-console.log("Server is running!");
+printMessage("server",`waiting user, (current ${userInRoom.length})`);

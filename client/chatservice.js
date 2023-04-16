@@ -11,9 +11,8 @@ class ChatService{
           name
         },
         (err, res) => {
-
           if(err || res.code=='1') {
-            printMessage('error', res.msg)
+            printMessage('error', err || res?.msg)
             process.exit(0);
           }
           this.user = {name: name}
@@ -23,12 +22,15 @@ class ChatService{
           this.chatStream.on("data", (data) => {
             if(data.from !== name){
               printMessage('message', `${data.msg} (from: ${data.from}, uuid: ${data.uuid})`)
-
             }
           });
           this.chatStream.on("end", (response) => {
             this.outRoom();
           })
+          this.chatStream.on('error', (error) => {
+            printMessage("server", "server is down");
+            process.exit(0)
+          });
 
           this.getAllUsersStream();
           this.getNotificateStream();
@@ -37,8 +39,8 @@ class ChatService{
   }
   getNotificateStream() {
     this.notificateStream = this.client.notificateUser(this.user, (err, res)=>{
-      if(res.code==1){
-        printMessage('error', res.msg)
+      if(err || res.code=='1') {
+        printMessage('error', err || res?.msg)
       }
     });
     this.notificateStream.on("data", (res)=>{
@@ -47,27 +49,33 @@ class ChatService{
     this.notificateStream.on("end", () => {
       this.outRoom()
     });
+    this.notificateStream.on('error', (error) => {
+      printMessage("server", "server is down");
+      process.exit(0)
+    });
   }
 
   getAllUsersStream() {
     this.userListStream = this.client.getAllUsers({}, (err, res)=>{
-      if(err){
-        printMessage('error', response)
+      if(err || res.code=='1') {
+        printMessage('error', err || res?.msg)
       }
     });
     this.userListStream.on("data", (response)=>{
       let usersList = response?.users || [];
       if (usersList.length < 3){
         clearScreen();
-        console.log(`user: ${this.user.name}`)
-        console.log(`group just ${usersList.length} members`)
+        printGuide();
+        console.log(`Current user: ${this.user.name}`)
+        console.log(`----------Group just ${usersList.length} members----------`)
         if(this.isBegin){
           this.isBegin = false;
         }
       }else{
         if(!this.isBegin){
           clearScreen();
-          console.log(`user: ${this.user.name}`)
+          printGuide();
+          console.log(`Current user: ${this.user.name}`)
           console.log(`----------Wellcome to chat----------`)
           this.isBegin = true;
         }
@@ -77,6 +85,11 @@ class ChatService{
     this.userListStream.on("end", () => {
       this.outRoom()
     });
+    this.userListStream.on('error', (error) => {
+      printMessage("server", "server is down");
+      process.exit(0)
+    });
+
   }
 
   sendMsg(text){
@@ -85,10 +98,9 @@ class ChatService{
       from: this.user.name,
       time: new Date().toLocaleString()
     };
-    this.client.sendMsg(msg, (err, response) => {
-      if(err){
-        printMessage('error', response)
-        console.log({err})
+    this.client.sendMsg(msg, (err, res) => {
+      if(err || res.code=='1') {
+        printMessage('error', err || res?.msg)
       }
     });
   }
@@ -105,11 +117,12 @@ class ChatService{
   }
 
   outRoom(){
-
     // this.chatStream.cancel();
     this.userListStream.cancel();
     this.client.outRoom(this.user,(err, res)=>{
-      if(err) console.log({res});
+      if(err || res.code=='1') {
+        printMessage('error', err || res?.msg)
+      }
     });
     console.log(`good bye ${this.user.name}`);
     process.exit(0);
@@ -128,6 +141,14 @@ function clearScreen() {
   console.log(blank);
   readline.cursorTo(process.stdout, 0, 0);
   readline.clearScreenDown(process.stdout);
+}
+
+function printGuide() {
+  console.log("action <code>:<data>")
+  console.log("code 0: Out room.")
+  console.log("code 1: Send message.")
+  console.log("code 2: Like message.")
+
 }
 
 module.exports = {
