@@ -29,6 +29,7 @@ function startChat (username){
     rl.on("line", function(text) {
       text=text.split(':')
       if (!chatservice.isBegin && text[0] != '0'){
+        printMessage("error", "group chat not ready");
         return;
       }
       switch (text[0]) {
@@ -42,6 +43,7 @@ function startChat (username){
           chatservice.outRoom()
           break;
         default:
+          printMessage("error", "not correct format");
           break;
       }
    });

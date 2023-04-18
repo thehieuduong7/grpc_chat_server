@@ -20,9 +20,8 @@ class ChatService{
             name: name
           });
           this.chatStream.on("data", (data) => {
-            if(data.from !== name){
-              printMessage('message', `${data.msg} (from: ${data.from}, uuid: ${data.uuid})`)
-            }
+            printMessage('message', `${data.msg} (from: ${data.from}, uuid: ${data.uuid})`)
+
           });
           this.chatStream.on("end", (response) => {
             this.outRoom();
@@ -63,10 +62,11 @@ class ChatService{
     });
     this.userListStream.on("data", (response)=>{
       let usersList = response?.users || [];
+      let usersListStr = usersList.filter(e=>e.name!=this.user.name).map(e=>e.name).join(", ")
       if (usersList.length < 3){
         clearScreen();
         printGuide();
-        console.log(`Current user: ${this.user.name}`)
+        console.log(`Current user: ${this.user.name}, other:[${usersListStr}]`)
         console.log(`----------Group just ${usersList.length} members----------`)
         if(this.isBegin){
           this.isBegin = false;
@@ -75,7 +75,7 @@ class ChatService{
         if(!this.isBegin){
           clearScreen();
           printGuide();
-          console.log(`Current user: ${this.user.name}`)
+          console.log(`Current user: ${this.user.name}, other:[${usersListStr}]`)
           console.log(`----------Wellcome to chat----------`)
           this.isBegin = true;
         }
@@ -93,6 +93,7 @@ class ChatService{
   }
 
   sendMsg(text){
+    // clear the current line
     const msg = {
       msg: text,
       from: this.user.name,
@@ -148,7 +149,6 @@ function printGuide() {
   console.log("code 0: Out room.")
   console.log("code 1: Send message.")
   console.log("code 2: Like message.")
-
 }
 
 module.exports = {

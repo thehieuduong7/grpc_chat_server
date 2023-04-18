@@ -52,11 +52,18 @@ const clearUser = (user)=>{
     if(userInRoom.length == MIN_USERS-1){
       printMessage("server",`waiting user, (current ${userInRoom.length})`);
     }
+    userInRoom.forEach(e=>{
+      e.notificate.write({
+        code: 0,
+        msg: `${user.name} left`
+      })
+    })
   }
   refreshMessage();
 }
 
 const outRoom = (call, callback) =>{
+  console.log({out: "out"})
   const user = call.request;
   clearUser(user);
   callback(null, {});
@@ -75,6 +82,10 @@ const sendMsg = (call, callback) => {
   // check du like moi cho send all
   if(!isValidLastLike(chatObj.from) || userInRoom.length < MIN_USERS ){
     printMessage("message error", `${chatObj.msg} (from: ${chatObj.from})`)
+    sendNotificate(chatObj.from, {
+      code: 1,
+      msg: `you can't send next message`
+    })
     return callback(null, {});
   }
   let data= {
@@ -144,17 +155,17 @@ const likeToMessage = (call, callback) => {
       msg.likeList.push(user)
 
       // notificate to user send msg
-      if(isValidLastLike(msg.from)){
-        sendNotificate(msg.from, {
-          code: 0,
-          msg: "you can send message."
-        })
-      }
+      sendNotificate(msg.from, {
+        code: 0,
+        msg: `${user.name} like your msg uuid=${msg.uuid} (${msg.likeList.length} likes${
+          isValidLastLike(msg.from)? "- you can send next message." : ""})`
+      })
+
       callback(null, {
         code: 0,
         msg: "Success like",
       });
-      printMessage("like", `${user.name} like ${uuid}`);
+      printMessage("like", `${user.name} like msg uuid=${msg.uuid} (${msg.likeList.length} likes)`);
       break;
   }
   if(msgError != ""){
@@ -194,6 +205,11 @@ server.addService(protoDescriptor.ChatService.service, {
 
 server.bindAsync(SERVER_URI, grpc.ServerCredentials.createInsecure(), ()=>{
   server.start();
+  printMessage("server",`------server start------`);
 });
+// printMessage("server",`waiting user, (current ${userInRoom.length})`);
 
-printMessage("server",`waiting user, (current ${userInRoom.length})`);
+process.on('SIGINT', () => {
+  printMessage("server",`------server shut down------`);
+  process.exit(0)
+});
