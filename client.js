@@ -46,7 +46,7 @@ function startChat (username){
           printMessage("error", "not correct format");
           break;
       }
-   });
+    });
   } catch (error) {
     printMessage("server", "server is down");
     process.exit(0)

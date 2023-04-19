@@ -3,6 +3,7 @@ class ChatService{
     this.client = client
     this.readline = readline
     this.isBegin = false
+    this.isFirst = true
   }
 
   joinRoom(name){
@@ -16,12 +17,17 @@ class ChatService{
             process.exit(0);
           }
           this.user = {name: name}
+
+          // print header
+          printGuide();
+          console.log(`Current user: ${this.user.name}`)
+          //
+
           this.chatStream = this.client.receiveMsg({
             name: name
           });
           this.chatStream.on("data", (data) => {
             printMessage('message', `${data.msg} (from: ${data.from}, uuid: ${data.uuid})`)
-
           });
           this.chatStream.on("end", (response) => {
             this.outRoom();
@@ -30,9 +36,8 @@ class ChatService{
             printMessage("server", "server is down");
             process.exit(0)
           });
-
-          this.getAllUsersStream();
           this.getNotificateStream();
+          this.getAllUsersStream();
         }
       );
   }
@@ -43,7 +48,7 @@ class ChatService{
       }
     });
     this.notificateStream.on("data", (res)=>{
-      printMessage(res.code=='1' ? 'error' :'info', res.msg)
+      printMessage(res.code=='1' ? 'error' :`info`, res.msg)
     });
     this.notificateStream.on("end", () => {
       this.outRoom()
@@ -62,23 +67,13 @@ class ChatService{
     });
     this.userListStream.on("data", (response)=>{
       let usersList = response?.users || [];
-      let usersListStr = usersList.filter(e=>e.name!=this.user.name).map(e=>e.name).join(", ")
-      if (usersList.length < 3){
-        clearScreen();
-        printGuide();
-        console.log(`Current user: ${this.user.name}, other:[${usersListStr}]`)
-        console.log(`----------Group just ${usersList.length} members----------`)
-        if(this.isBegin){
-          this.isBegin = false;
-        }
-      }else{
-        if(!this.isBegin){
-          clearScreen();
-          printGuide();
-          console.log(`Current user: ${this.user.name}, other:[${usersListStr}]`)
-          console.log(`----------Wellcome to chat----------`)
-          this.isBegin = true;
-        }
+      if (this.isBegin != usersList.length >= 3 || this.isFirst){
+        printMessage(`info`,  usersList.length >= 3 ?
+          "group ready to chat":
+          "group not ready to chat"
+         );
+        this.isBegin = usersList.length >= 3;
+        this.isFirst = false;
       }
       }
     );
@@ -128,6 +123,7 @@ class ChatService{
     console.log(`good bye ${this.user.name}`);
     process.exit(0);
   }
+
 }
 
 function printMessage(label, message){

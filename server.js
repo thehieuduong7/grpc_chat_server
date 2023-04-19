@@ -27,11 +27,18 @@ const join = (call, callback) => {
       code: 0,
       msg: "Success",
     });
-    printMessage("login",`${user.name} joined`)
-    notifcateUserList();
+    printMessage("login",`${user.name} joined, users: [${userInRoom.map(e=>e.user.name).join(", ")}]`)
     if(userInRoom.length==MIN_USERS){
       printMessage("server",`start chat, (current ${userInRoom.length})`);
     }
+
+    userInRoom.forEach(e=>{
+      e.notificate?.write({
+        code: 0,
+        msg: `${user.name} joined, users: [${userInRoom.map(e=>e.user.name).join(", ")}]`
+      })
+    })
+    setTimeout(notifcateUserList, 100);
   } else {
     let errorMessage = `${user.name} already exist.`;
     printMessage("login error", errorMessage)
@@ -48,14 +55,14 @@ const clearUser = (user)=>{
 
     //log user sign out
 
-    printMessage("logout",`${user.name} left`)
+    printMessage("logout",`${user.name} left, users: [${userInRoom.map(e=>e.user.name).join(", ")}]`)
     if(userInRoom.length == MIN_USERS-1){
       printMessage("server",`waiting user, (current ${userInRoom.length})`);
     }
     userInRoom.forEach(e=>{
       e.notificate.write({
         code: 0,
-        msg: `${user.name} left`
+        msg: `${user.name} left, users: [${userInRoom.map(e=>e.user.name).join(", ")}]`
       })
     })
   }
@@ -63,11 +70,10 @@ const clearUser = (user)=>{
 }
 
 const outRoom = (call, callback) =>{
-  console.log({out: "out"})
   const user = call.request;
   clearUser(user);
   callback(null, {});
-  notifcateUserList();
+  setTimeout(notifcateUserList, 100)
 }
 
 const isValidLastLike = (name)=>{
